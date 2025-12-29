@@ -1,6 +1,7 @@
 'use server'
 
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { signIn } from '@/auth';
@@ -58,21 +59,28 @@ export async function signup(prevState: string | undefined, formData: FormData) 
             code = generateCode(role);
         }
 
-        const user = await prisma.user.create({
-            data: {
-                name,
-                email,
-                username,
-                password: hashedPassword,
-                role,
-                coachProfile: role === 'COACH' ? {
-                    create: { code }
-                } : undefined,
-                clientProfile: role === 'CLIENT' ? {
-                    create: { code }
-                } : undefined,
-            },
-        });
+        try {
+            const user = await prisma.user.create({
+                data: {
+                    name,
+                    email,
+                    username,
+                    password: hashedPassword,
+                    role,
+                    coachProfile: role === 'COACH' ? {
+                        create: { code }
+                    } : undefined,
+                    clientProfile: role === 'CLIENT' ? {
+                        create: { code }
+                    } : undefined,
+                },
+            });
+        } catch (error) {
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+                return 'An account with this email already exists';
+            }
+            throw error;
+        }
     } catch (error) {
         console.error('Signup Error:', error);
         return 'Database Error: Failed to Create Account.';
