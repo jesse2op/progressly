@@ -18,12 +18,17 @@ export default async function ClientHome() {
         redirect('/login');
     }
 
-    // Get client profile and username via raw query to ensure we see new fields
-    const clientProfiles: any[] = await prisma.$queryRaw`SELECT id, code, coachId FROM ClientProfile WHERE userId = ${session.user.id} LIMIT 1`;
-    const clientProfile = clientProfiles[0];
+    // Get client profile and username via Prisma Client
+    const clientProfile = await prisma.clientProfile.findUnique({
+        where: { userId: session.user.id },
+        select: { id: true, code: true, coachId: true }
+    });
 
-    const dbUsers: any[] = await prisma.$queryRaw`SELECT username FROM User WHERE id = ${session.user.id} LIMIT 1`;
-    const dbUsername = dbUsers[0]?.username;
+    const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { username: true }
+    });
+    const dbUsername = user?.username;
 
     if (!clientProfile) {
         return <div className="p-8">Profile not found. Please contact support.</div>;
@@ -48,7 +53,8 @@ export default async function ClientHome() {
 
     // Get or Create Meal Assignment for today
     const dateStr = today.toISOString();
-    const mealAssignmentId = await ensureDailyAssignment(clientProfile.id, dateStr);
+    const assignmentResult = await ensureDailyAssignment(clientProfile.id, dateStr);
+    const mealAssignmentId = typeof assignmentResult === 'string' ? assignmentResult : null;
 
     let completedMeals: string[] = [];
     let dailyLog = "";
@@ -56,25 +62,21 @@ export default async function ClientHome() {
     let planMeals = [];
 
     if (mealAssignmentId) {
-        const assignments: any[] = await prisma.$queryRaw`
-            SELECT ma.completedMeals, ma.customContent, mp.title, mp.content
-            FROM MealAssignment ma
-            LEFT JOIN MealPlan mp ON mp.id = ma.mealPlanId
-            WHERE ma.id = ${mealAssignmentId}
-            LIMIT 1
-        `;
-        const assignment = assignments[0];
+        const assignment = await prisma.mealAssignment.findUnique({
+            where: { id: mealAssignmentId },
+            include: { mealPlan: true }
+        });
         if (assignment) {
             dailyLog = assignment.customContent || "";
-            displayTitle = assignment.title || "Daily Nutrition";
+            displayTitle = assignment.mealPlan?.title || "Daily Nutrition";
 
             try {
                 completedMeals = assignment.completedMeals ? JSON.parse(assignment.completedMeals) : [];
             } catch (e) { completedMeals = []; }
 
             try {
-                if (assignment.content) {
-                    const parsed = JSON.parse(assignment.content);
+                if (assignment.mealPlan?.content) {
+                    const parsed = JSON.parse(assignment.mealPlan.content);
                     planMeals = parsed.meals || [];
                 }
             } catch (e) { planMeals = []; }
@@ -187,7 +189,7 @@ export default async function ClientHome() {
                 </Card>
 
                 <MealLogCard
-                    assignmentId={mealAssignmentId}
+                    assignmentId={mealAssignmentId ?? ""}
                     initialCompleted={completedMeals}
                     initialLog={dailyLog}
                     planTitle={displayTitle}

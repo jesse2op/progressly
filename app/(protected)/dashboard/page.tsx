@@ -11,12 +11,17 @@ export default async function CoachDashboard() {
         redirect('/login');
     }
 
-    // Get coach profile and username via raw query to ensure we see new fields
-    const coachProfiles: any[] = await prisma.$queryRaw`SELECT id, code FROM CoachProfile WHERE userId = ${session.user.id} LIMIT 1`;
-    const coachProfile = coachProfiles[0];
+    // Get coach profile and username via Prisma Client
+    const coachProfile = await prisma.coachProfile.findUnique({
+        where: { userId: session.user.id },
+        select: { id: true, code: true }
+    });
 
-    const dbUsers: any[] = await prisma.$queryRaw`SELECT username FROM User WHERE id = ${session.user.id} LIMIT 1`;
-    const dbUsername = dbUsers[0]?.username;
+    const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { username: true }
+    });
+    const dbUsername = user?.username;
 
     if (!coachProfile) {
         return <div className="p-8">Coach profile not found. Please contact support.</div>;

@@ -9,9 +9,11 @@ export async function toggleMealCompletion(assignmentId: string, mealName: strin
     if (!session || session.user.role !== 'CLIENT') return { error: 'Unauthorized' };
 
     try {
-        // Fetch current assignment via raw query to be safe
-        const assignments: any[] = await prisma.$queryRaw`SELECT id, completedMeals FROM MealAssignment WHERE id = ${assignmentId} LIMIT 1`;
-        const assignment = assignments[0];
+        // Fetch current assignment via Prisma Client
+        const assignment = await prisma.mealAssignment.findUnique({
+            where: { id: assignmentId },
+            select: { id: true, completedMeals: true }
+        });
 
         if (!assignment) return { error: 'Assignment not found' };
 
@@ -30,8 +32,11 @@ export async function toggleMealCompletion(assignmentId: string, mealName: strin
 
         const completedStr = JSON.stringify(completed);
 
-        // Update via raw query
-        await prisma.$executeRaw`UPDATE MealAssignment SET completedMeals = ${completedStr} WHERE id = ${assignmentId}`;
+        // Update via Prisma Client
+        await prisma.mealAssignment.update({
+            where: { id: assignmentId },
+            data: { completedMeals: completedStr }
+        });
 
         revalidatePath('/home');
         return { success: true };
@@ -46,7 +51,10 @@ export async function updateDailyMealLog(assignmentId: string, customContent: st
     if (!session || session.user.role !== 'CLIENT') return { error: 'Unauthorized' };
 
     try {
-        await prisma.$executeRaw`UPDATE MealAssignment SET customContent = ${customContent} WHERE id = ${assignmentId}`;
+        await prisma.mealAssignment.update({
+            where: { id: assignmentId },
+            data: { customContent }
+        });
         revalidatePath('/home');
         return { success: true };
     } catch (error) {
@@ -64,27 +72,44 @@ export async function ensureDailyAssignment(clientId: string, dateStr: string) {
 
     try {
         // Check if exists
-        const existing: any[] = await prisma.$queryRaw`SELECT id FROM MealAssignment WHERE clientId = ${clientId} AND date = ${date.toISOString()} LIMIT 1`;
+        const existing = await prisma.mealAssignment.findFirst({
+            where: {
+                clientId,
+                date: { equals: date } // Prisma handles Date objects correctly
+            },
+            select: { id: true }
+        });
 
-        if (existing.length > 0) return existing[0].id;
+        if (existing) return existing.id;
 
         // Try to find coach's latest plan to auto-assign
-        const clientProfiles: any[] = await prisma.$queryRaw`SELECT coachId FROM ClientProfile WHERE id = ${clientId} LIMIT 1`;
-        const coachId = clientProfiles[0]?.coachId;
+        const clientProfile = await prisma.clientProfile.findUnique({
+            where: { id: clientId },
+            select: { coachId: true }
+        });
+        const coachId = clientProfile?.coachId;
 
         let mealPlanId = null;
         if (coachId) {
-            const plans: any[] = await prisma.$queryRaw`SELECT id FROM MealPlan WHERE coachId = ${coachId} ORDER BY updatedAt DESC LIMIT 1`;
-            mealPlanId = plans[0]?.id || null;
+            const plan = await prisma.mealPlan.findFirst({
+                where: { coachId },
+                orderBy: { updatedAt: 'desc' },
+                select: { id: true }
+            });
+            mealPlanId = plan?.id || null;
         }
 
-        const id = crypto.randomUUID();
-        await prisma.$executeRaw`
-            INSERT INTO MealAssignment (id, clientId, mealPlanId, date, completedMeals, customContent)
-            VALUES (${id}, ${clientId}, ${mealPlanId}, ${date.toISOString()}, '[]', '')
-        `;
+        const newAssignment = await prisma.mealAssignment.create({
+            data: {
+                clientId,
+                mealPlanId,
+                date,
+                completedMeals: '[]',
+                customContent: ''
+            }
+        });
 
-        return id;
+        return newAssignment.id;
     } catch (error) {
         console.error(error);
         return null;
