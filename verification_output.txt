@@ -1,0 +1,11 @@
+--- USER IDENTIFIERS ---
+User: Test Coach | Role: COACH | Username: test_coach
+User: Jesse | Role: COACH | Username: jesse
+User: Jaffie | Role: CLIENT | Username: jaffie
+
+--- COACH CODES ---
+Coach UserID: cmjr5nrif0000o2uepl4opztu | Code: PG-C-Z4L6
+Coach UserID: cmjr5sj8g0000ifma83712kt3 | Code: PG-C-WS8Y
+
+--- CLIENT CODES ---
+Client UserID: cmjr6h69l0000dtjnkdsye240 | Code: PG-A-HDLM
